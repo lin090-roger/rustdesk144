@@ -251,11 +251,11 @@ class _ConnectionTabPageState extends State<ConnectionTabPage> {
       MenuEntryButton<String>(
         childBuilder: (TextStyle? style) => Obx(() => Text(
               translate(
-                  toolbarState.hide.isTrue ? 'Show Toolbar' : 'Hide Toolbar'),
+                  toolbarState.show.isTrue ? 'Hide Toolbar' : 'Show Toolbar'),
               style: style,
             )),
         proc: () {
-          toolbarState.switchHide(sessionId);
+          toolbarState.switchShow(sessionId);
           cancelFunc();
         },
         padding: padding,

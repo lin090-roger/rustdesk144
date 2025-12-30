@@ -146,10 +146,6 @@ class TerminalModel with ChangeNotifier {
     }
   }
 
-  Future<void> sendVirtualKey(String data) async {
-    return _handleInput(data);
-  }
-
   Future<void> closeTerminal() async {
     if (_terminalOpened) {
       try {

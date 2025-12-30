@@ -31,12 +31,8 @@ import 'package:flutter_hbb/common/widgets/custom_scale_base.dart';
 class ToolbarState {
   late RxBool _pin;
 
-  RxBool collapse = false.obs;
-  RxBool hide = false.obs;
-
-  // Track initialization state to prevent flickering
-  final RxBool initialized = false.obs;
-  bool _isInitializing = false;
+  bool isShowInited = false;
+  RxBool show = false.obs;
 
   ToolbarState() {
     _pin = RxBool(false);
@@ -57,39 +53,19 @@ class ToolbarState {
 
   bool get pin => _pin.value;
 
-  /// Initialize all toolbar states from session options.
-  /// This should be called once when the toolbar is first created.
-  Future<void> init(SessionID sessionId) async {
-    if (initialized.value || _isInitializing) return;
-    _isInitializing = true;
-
-    try {
-      // Load both states in parallel for better performance
-      final results = await Future.wait([
-        bind.sessionGetToggleOption(
-            sessionId: sessionId, arg: kOptionCollapseToolbar),
-        bind.sessionGetToggleOption(
-            sessionId: sessionId, arg: kOptionHideToolbar),
-      ]);
-
-      collapse.value = results[0] ?? false;
-      hide.value = results[1] ?? false;
-    } finally {
-      _isInitializing = false;
-      initialized.value = true;
-    }
-  }
-
-  switchCollapse(SessionID sessionId) async {
+  switchShow(SessionID sessionId) async {
     bind.sessionToggleOption(
         sessionId: sessionId, value: kOptionCollapseToolbar);
-    collapse.value = !collapse.value;
+    show.value = !show.value;
   }
 
-  // Switch hide state for entire toolbar visibility
-  switchHide(SessionID sessionId) async {
-    bind.sessionToggleOption(sessionId: sessionId, value: kOptionHideToolbar);
-    hide.value = !hide.value;
+  initShow(SessionID sessionId) async {
+    if (!isShowInited) {
+      show.value = !(await bind.sessionGetToggleOption(
+              sessionId: sessionId, arg: kOptionCollapseToolbar) ??
+          false);
+      isShowInited = true;
+    }
   }
 
   switchPin() async {
@@ -261,8 +237,7 @@ class _RemoteToolbarState extends State<RemoteToolbar> {
     // setState(() {});
   }
 
-  RxBool get collapse => widget.state.collapse;
-  RxBool get hide => widget.state.hide;
+  RxBool get show => widget.state.show;
   bool get pin => widget.state.pin;
 
   PeerInfo get pi => widget.ffi.ffiModel.pi;
@@ -283,8 +258,6 @@ class _RemoteToolbarState extends State<RemoteToolbar> {
                   arg: 'remote-menubar-drag-x') ??
               '0.5') ??
           0.5;
-      // Initialize toolbar states (collapse, hide) from session options
-      widget.state.init(widget.ffi.sessionId);
     });
 
     _debouncerHide = Debouncer<int>(
@@ -304,8 +277,8 @@ class _RemoteToolbarState extends State<RemoteToolbar> {
   }
 
   _debouncerHideProc(int v) {
-    if (!pin && collapse.isFalse && _isCursorOverImage && _dragging.isFalse) {
-      collapse.value = true;
+    if (!pin && show.isTrue && _isCursorOverImage && _dragging.isFalse) {
+      show.value = false;
     }
   }
 
@@ -318,27 +291,17 @@ class _RemoteToolbarState extends State<RemoteToolbar> {
 
   @override
   Widget build(BuildContext context) {
-    return Obx(() {
-      // Wait for initialization to complete to prevent flickering
-      if (!widget.state.initialized.value) {
-        return const SizedBox.shrink();
-      }
-      // If toolbar is hidden, return empty widget
-      if (hide.value) {
-        return const SizedBox.shrink();
-      }
-      return Align(
-        alignment: Alignment.topCenter,
-        child: collapse.isFalse
-            ? _buildToolbar(context)
-            : _buildDraggableCollapse(context),
-      );
-    });
+    return Align(
+      alignment: Alignment.topCenter,
+      child: Obx(() => show.value
+          ? _buildToolbar(context)
+          : _buildDraggableShowHide(context)),
+    );
   }
 
-  Widget _buildDraggableCollapse(BuildContext context) {
+  Widget _buildDraggableShowHide(BuildContext context) {
     return Obx(() {
-      if (collapse.isFalse && _dragging.isFalse) {
+      if (show.isTrue && _dragging.isFalse) {
         triggerAutoHide();
       }
       final borderRadius = BorderRadius.vertical(
@@ -435,7 +398,7 @@ class _RemoteToolbarState extends State<RemoteToolbar> {
             ),
           ),
         ),
-        _buildDraggableCollapse(context),
+        _buildDraggableShowHide(context),
       ],
     );
   }
@@ -1765,23 +1728,13 @@ class _KeyboardMenu extends StatelessWidget {
   Widget build(BuildContext context) {
     var ffiModel = Provider.of<FfiModel>(context);
     if (!ffiModel.keyboard) return Offstage();
-    toolbarToggles() {
-      final toggles = toolbarKeyboardToggles(ffi)
-          .map((e) => CkbMenuButton(
-              value: e.value,
-              onChanged: e.onChanged,
-              child: e.child,
-              ffi: ffi) as Widget)
-          .toList();
-      if (toggles.isNotEmpty) {
-        toggles.add(Divider());
-      }
-      return toggles;
-    }
-
+    toolbarToggles() => toolbarKeyboardToggles(ffi)
+        .map((e) => CkbMenuButton(
+            value: e.value, onChanged: e.onChanged, child: e.child, ffi: ffi))
+        .toList();
     return _IconSubmenuButton(
         tooltip: 'Keyboard Settings',
-        svg: "assets/keyboard_mouse.svg",
+        svg: "assets/keyboard.svg",
         ffi: ffi,
         color: _ToolbarTheme.blueColor,
         hoverColor: _ToolbarTheme.hoverBlueColor,
@@ -2538,7 +2491,7 @@ class _DraggableShowHideState extends State<_DraggableShowHide> {
   double left = 0.0;
   double right = 1.0;
 
-  RxBool get collapse => widget.toolbarState.collapse;
+  RxBool get show => widget.toolbarState.show;
 
   @override
   initState() {
@@ -2661,20 +2614,20 @@ class _DraggableShowHideState extends State<_DraggableShowHide> {
               )),
         buttonWrapper(
           () => setState(() {
-            widget.toolbarState.switchCollapse(widget.sessionId);
+            widget.toolbarState.switchShow(widget.sessionId);
           }),
           Obx((() => Tooltip(
-                message: translate(
-                    collapse.isFalse ? 'Hide Toolbar' : 'Show Toolbar'),
+                message:
+                    translate(show.isTrue ? 'Hide Toolbar' : 'Show Toolbar'),
                 child: Icon(
-                  collapse.isFalse ? Icons.expand_less : Icons.expand_more,
+                  show.isTrue ? Icons.expand_less : Icons.expand_more,
                   size: iconSize,
                 ),
               ))),
         ),
         if (isWebDesktop)
           Obx(() {
-            if (collapse.isFalse) {
+            if (show.isTrue) {
               return Offstage();
             } else {
               return buttonWrapper(

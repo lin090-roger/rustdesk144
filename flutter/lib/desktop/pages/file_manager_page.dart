@@ -282,9 +282,11 @@ class _FileManagerPageState extends State<FileManagerPage>
                                     item.state != JobState.inProgress,
                                 child: LinearPercentIndicator(
                                   animateFromLastPercent: true,
-                                  center: Text(item.percentText),
+                                  center: Text(
+                                    '${(item.finishedSize / item.totalSize * 100).toStringAsFixed(0)}%',
+                                  ),
                                   barRadius: Radius.circular(15),
-                                  percent: item.percent,
+                                  percent: item.finishedSize / item.totalSize,
                                   progressColor: MyTheme.accent,
                                   backgroundColor: Theme.of(context).hoverColor,
                                   lineHeight: kDesktopFileTransferRowHeight,
